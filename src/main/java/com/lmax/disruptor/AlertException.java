@@ -37,7 +37,7 @@ public final class AlertException extends Exception
 
     /**
      * Overridden so the stack trace is not filled in for this exception for performance reasons.
-     *
+     * <p>由于性能原因，此异常将不填充堆栈跟踪。</p>
      * @return this instance.
      */
     @Override

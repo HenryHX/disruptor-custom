@@ -27,6 +27,9 @@ import static java.lang.invoke.MethodType.methodType;
  * behaviours that are implemented in or anticipated to be spec'ed under the
  * {@link java.lang.Thread} class in some Java SE versions, but missing in prior
  * versions.
+ * <p>
+ *     这个类捕获可能被某些运行时用来提高代码性能的提示。
+ *     它的目的是捕获在{@link java.lang.Thread}中实现或预期规范的暗示行为。在一些Java SE版本中有Thread类，但是在以前的版本中没有。
  */
 public final class ThreadHints
 {

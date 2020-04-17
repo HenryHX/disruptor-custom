@@ -18,6 +18,7 @@ package com.lmax.disruptor;
 
 /**
  * Strategy employed for making {@link EventProcessor}s wait on a cursor {@link Sequence}.
+ * <p>消费者等待可用事件的策略</p>
  */
 public interface WaitStrategy
 {
@@ -29,10 +30,13 @@ public interface WaitStrategy
      * handles this case and will signal a timeout if required.
      *
      * @param sequence          to be waited on.
+     *                          <p>给定序号
      * @param cursor            the main sequence from ringbuffer. Wait/notify strategies will
      *                          need this as it's the only sequence that is also notified upon update.
      * @param dependentSequence on which to wait.
+     *                          <p>依赖的序列，一般是上一个消费者组序列的FixedSequenceGroup封装。如果消费者是第一组，则为cursor。
      * @param barrier           the processor is waiting on.
+     *                          <p>在等待时需要判断是否对消费者有alert操作
      * @return the sequence that is available which may be greater than the requested sequence.
      * @throws AlertException       if the status of the Disruptor has changed.
      * @throws InterruptedException if the thread is interrupted.
@@ -43,6 +47,7 @@ public interface WaitStrategy
 
     /**
      * Implementations should signal the waiting {@link EventProcessor}s that the cursor has advanced.
+     * <p>当生产者发布新事件后，将通知等待的EventProcessor。当用锁机制时才会包含相应逻辑。</p>
      */
     void signalAllWhenBlocking();
 }

@@ -29,19 +29,49 @@ import com.lmax.disruptor.util.Util;
  * <p> * Note on {@link Sequencer#getCursor()}:  With this sequencer the cursor value is updated after the call
  * to {@link Sequencer#next()}, to determine the highest available sequence that can be read, then
  * {@link Sequencer#getHighestPublishedSequence(long, long)} should be used.</p>
+ *
+ * <p>多生产者模型下的序号生成器,适用于多个发布线程进行定序。</p>
+ * <p>
+ * 注意:
+ * 在使用该序号生成器时，不同的生产者调用{@link Sequencer#next()}都会更新cursor value，
+ * 所以调用{@link Sequencer#getCursor()}后必须 调用{@link Sequencer#getHighestPublishedSequence(long, long)}
+ * 确定真正可用的序号。（因为多生产者模型下，生产者之间是无锁的，预分配空间，那么真正填充的数据可能是非连续的），因此需要确认
  */
 public final class MultiProducerSequencer extends AbstractSequencer
 {
     private static final Unsafe UNSAFE = Util.getUnsafe();
+    // 获取数组对象头元素偏移量
     private static final long BASE = UNSAFE.arrayBaseOffset(int[].class);
+    // 数组一个元素的地址偏移量(用于计算指定下标的元素的内存地址)
     private static final long SCALE = UNSAFE.arrayIndexScale(int[].class);
 
+    /**
+     * 上次获取到的最小序号缓存，会被并发的访问，因此用Sequence，而单线程的Sequencer中则使用了一个普通long变量。
+     * 在任何时候查询了消费者进度信息时都需要更新它。
+     * 某些时候可以减少{@link #gatingSequences}的遍历(减少volatile读操作)。
+     *
+     * Util.getMinimumSequence(gatingSequences, current)的查询结果是递增的，但是缓存结果不一定的是递增，变量的更新存在竞态条件，
+     * 它可能会被设置为一个更小的值。
+     *
+     * gatingSequenceCache 的更新采用的都是set,因为本身就可能设置为一个错误的值(更小的值)，使用volatile写也无法解决该问题，
+     * 使用set可以减少内存屏障消耗
+     * {@link SingleProducerSequencerFields#cachedValue}
+     */
     private final Sequence gatingSequenceCache = new Sequence(Sequencer.INITIAL_CURSOR_VALUE);
 
     // availableBuffer tracks the state of each ringbuffer slot
     // see below for more details on the approach
+    // 多生产者模式下，标记哪些序号是真正被填充了数据的。 (用于获取连续的可用空间)
+    // 其实就是表明数据是属于第几环
     private final int[] availableBuffer;
+    /**
+     * 用于快速的计算序号对应的下标，“与”计算就可以，本质上和RingBuffer中计算插槽位置一样
+     * {@link RingBufferFields#elementAt(long)}
+     */
     private final int indexMask;
+    /**
+     * 用于计算sequence可用标记的偏移量(“与”计算)
+     */
     private final int indexShift;
 
     /**

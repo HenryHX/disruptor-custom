@@ -24,6 +24,14 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
  */
 class SequenceGroups
 {
+    /**
+     * 对于新add的Sequence，设置其初始值为cursorSequence
+     * @param holder
+     * @param updater
+     * @param cursor
+     * @param sequencesToAdd
+     * @param <T>
+     */
     static <T> void addSequences(
         final T holder,
         final AtomicReferenceFieldUpdater<T, Sequence[]> updater,
