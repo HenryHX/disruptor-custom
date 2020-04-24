@@ -268,6 +268,8 @@ public final class MultiProducerSequencer extends AbstractSequencer
      * (Keeping single pointers tracking start and end would require coordination
      * between the threads).
      * <p>
+     * 主要原因是为了避免在发布服务线程之间共享sequence对象。(需要线程之间的协调以保持单指针跟踪开始和结束)。
+     * <p>
      * --  Firstly we have the constraint that the delta between the cursor and minimum
      * gating sequence will never be larger than the buffer size (the code in
      * next/tryNext in the Sequence takes care of that).
@@ -279,6 +281,12 @@ public final class MultiProducerSequencer extends AbstractSequencer
      * minimum gating sequence is effectively our last available position in the
      * buffer), when we have new data and successfully claimed a slot we can simply
      * write over the top.
+     * <p></p>
+     * ——首先，我们有一个限制，即游标和最小gating序列之间的增量永远不会大于缓冲区大小(序列中的next/tryNext代码会处理这个问题)。
+     * ——考虑到 将序列值和indexMask进行与操作，得到插槽的index。(又名模运算符)
+     * ——序列的上部成为检查可用性的值。它告诉我们，我们已经绕着环形缓冲区转了多少圈(又名除法)
+     * ——因为如果不向前移动gating序列，我们就无法进行包装(例如，最小gating序列实际上是缓冲区中最后可用的位置)，
+     *   当我们有新数据并成功地声明了一个插槽时，我们可以简单地在上面写入。
      */
     private void setAvailable(final long sequence)
     {
@@ -317,11 +325,48 @@ public final class MultiProducerSequencer extends AbstractSequencer
         return availableSequence;
     }
 
+    /**
+     * 计算sequence对应可用标记，标记其实就是第几环
+     * <pre>
+     * 如buffersize = 8, indexShift = Util.log2(bufferSize) = 3
+     *     sequence = 0(0000)        sequence>>>3 = 0(0)
+     *     sequence = 6(0110)        sequence>>>3 = 0(0)
+     *     sequence = 7(0111)        sequence>>>3 = 0(0)
+     *     sequence = 8(1000)        sequence>>>3 = 1(1)
+     *     sequence = 14(1110)       sequence>>>3 = 1(1)
+     *     sequence = 15(1111)       sequence>>>3 = 1(1)
+     *     sequence = 16(10000)      sequence>>>3 = 2(10)
+     *     sequence = 23(10111)      sequence>>>3 = 2(10)
+     *     sequence = 24(11000)      sequence>>>3 = 3(11)
+     *     sequence = 31(11111)      sequence>>>3 = 3(11)
+     *     sequence = 32(100000)     sequence>>>3 = 4(100)
+     *     sequence = 39(100111)     sequence>>>3 = 4(100)
+     *     sequence = 40(101000)     sequence>>>3 = 5(101)
+     *     sequence = 47(101111)     sequence>>>3 = 5(101)
+     *     sequence = 48(110000)     sequence>>>3 = 6(110)
+     * </pre>
+     */
     private int calculateAvailabilityFlag(final long sequence)
     {
         return (int) (sequence >>> indexShift);
     }
 
+    /**
+     * 计算sequence对应的下标(插槽位置)
+     * <pre>
+     * 如buffersize = 8, indexMask = bufferSize - 1 = 7(0111);
+     *     sequence = 0(0000)        sequence&7 = 0(0)
+     *     sequence = 6(0110)        sequence&7 = 6(0110)
+     *     sequence = 7(0111)        sequence&7 = 7(0111)
+     *     sequence = 8(1000)        sequence&7 = 0(0000)
+     *     sequence = 14(1110)       sequence&7 = 6(0110)
+     *     sequence = 15(1111)       sequence&7 = 7(0111)
+     *     sequence = 16(10000)      sequence&7 = 0(0000)
+     *     sequence = 23(10111)      sequence&7 = 7(0111)
+     *     sequence = 24(11000)      sequence&7 = 0(0000)
+     *     sequence = 31(11111)      sequence&7 = 7(0111)
+     * </pre>
+     */
     private int calculateIndex(final long sequence)
     {
         return ((int) sequence) & indexMask;

@@ -113,10 +113,13 @@ public final class BatchEventProcessor<T>
     @Override
     public void run()
     {
+        // 线程是否运行
         if (running.compareAndSet(IDLE, RUNNING))
         {
+            // 将ProcessingSequenceBarrier的alerted设置成false
             sequenceBarrier.clearAlert();
 
+            // start事件处理
             notifyStart();
             try
             {
@@ -147,16 +150,27 @@ public final class BatchEventProcessor<T>
         }
     }
 
+    /**
+     * 消费者(Consumer)现在只需要通过简单通过ProcessingSequenceBarrier拿到可用的Ringbuffer中的Sequence序号就可以可以读取数据了。
+     * 因为这些新的节点的确已经写入了数据（RingBuffer本身的序号已经更新），而且消费者对这些节点的唯一操作是读而不是写，因此访问不用加锁。
+     * 不仅代码实现起来可以更加安全和简单，而且不用加锁使得速度更快。
+     *
+     * 另一个好处是可以用多个消费者(Consumer)去读同一个RingBuffer，不需要加锁，也不需要用另外的队列来协调不同的线程(消费者)。
+     * 这样你可以在Disruptor的协调下实现真正的并发数据处理。
+     */
     private void processEvents()
     {
         T event = null;
+        // 获取当前事件处理器的下一个sequence
         long nextSequence = sequence.get() + 1L;
 
         while (true)
         {
             try
             {
+                // 从ProcessingSequenceBarrier获取可用的availableSequence
                 final long availableSequence = sequenceBarrier.waitFor(nextSequence);
+                // 下一个nextSequence比可用的availableSequence小的时候，获取事件，并触发事件处理
                 if (batchStartAware != null && availableSequence >= nextSequence)
                 {
                     batchStartAware.onBatchStart(availableSequence - nextSequence + 1);
@@ -169,10 +183,12 @@ public final class BatchEventProcessor<T>
                     nextSequence++;
                 }
 
+                // 设置当前事件处理器已经处理的sequence
                 sequence.set(availableSequence);
             }
             catch (final TimeoutException e)
             {
+                // 超时处理
                 notifyTimeout(sequence.get());
             }
             catch (final AlertException ex)
@@ -184,6 +200,7 @@ public final class BatchEventProcessor<T>
             }
             catch (final Throwable ex)
             {
+                // 异常事件处理
                 exceptionHandler.handleEventException(ex, nextSequence, event);
                 sequence.set(nextSequence);
                 nextSequence++;
