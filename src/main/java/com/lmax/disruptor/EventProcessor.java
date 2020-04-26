@@ -22,11 +22,23 @@ package com.lmax.disruptor;
  * instance.
  * <p>
  * An EventProcessor will generally be associated with a Thread for execution.
+ * <p></p>
+ * 等待RingBuffer有可用消费事件。一个EventProcessor关联一个执行线程。
+ * <p></p>
+ * EventProcessor接口继承了Runnable接口，主要有两种实现：
+ *      1)单线程批量处理{@link BatchEventProcessor}
+ *      2)多线程处理{@link WorkProcessor}。
+ * 在使用Disruptor帮助类构建消费者时，使用handleEventsWith方法传入多个EventHandler，内部使用多个BatchEventProcessor关联多个线程执行。
+ *      这种情况类似JMS中的发布订阅模式，同一事件会被多个消费者并行消费。适用于同一事件触发多种操作。
+ * 而使用Disruptor的handleEventsWithWorkerPool传入多个WorkHandler时，内部使用多个WorkProcessor关联多个线程执行。
+ *      这种情况类似JMS的点对点模式，同一事件会被一组消费者其中之一消费。适用于提升消费者并行处理能力。
+ *
  */
 public interface EventProcessor extends Runnable
 {
     /**
      * Get a reference to the {@link Sequence} being used by this {@link EventProcessor}.
+     * <p>获取此{@link EventProcessor}使用的{@link Sequence}的引用。</p>
      *
      * @return reference to the {@link Sequence} for this {@link EventProcessor}
      */

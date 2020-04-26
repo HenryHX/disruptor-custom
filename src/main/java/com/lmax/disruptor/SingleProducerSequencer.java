@@ -209,7 +209,8 @@ public final class SingleProducerSequencer extends SingleProducerSequencerFields
             cursor.setVolatile(nextValue);  // StoreLoad fence
 
             long minSequence;
-            // 如果末端的消费者们仍然没让出该插槽则等待，知道消费者们让出该插槽
+            // 如果末端的消费者们仍然没让出该插槽则等待，直到消费者们让出该插槽
+            // 由于外层判断使用的是缓存的消费者序列最小值，这里使用真实的消费者序列进行判断，并将最新结果在跳出while循环之后进行缓存
             while (wrapPoint > (minSequence = Util.getMinimumSequence(gatingSequences, nextValue)))
             {
                 LockSupport.parkNanos(1L); // TODO: Use waitStrategy to spin?
@@ -280,7 +281,8 @@ public final class SingleProducerSequencer extends SingleProducerSequencerFields
      * buffersize = 8, produced=13, consumed=5 此时生产者和消费者在同一位置
      *       => getBufferSize() - (produced - consumed) = 8-(13-5) = 0
      *
-     * buffersize = 8, produced=14, consumed=5 此时生产者比消费者大1，这种情况不合理，在运行期间调用过{@link SingleProducerSequencer#claim(long)}方法可能产生该情况
+     * buffersize = 8, produced=14, consumed=5 此时生产者比消费者大1，这种情况不合理，
+     * 在运行期间调用过{@link SingleProducerSequencer#claim(long)}方法可能产生该情况
      *       => getBufferSize() - (produced - consumed) = 8-(14-5) = -1
      */
     @Override

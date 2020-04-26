@@ -4,7 +4,7 @@ public interface Sequenced
 {
     /**
      * The capacity of the data structure to hold entries.
-     *
+     * <p>获取环形缓冲的大小</p>
      * @return the size of the RingBuffer.
      */
     int getBufferSize();
@@ -12,6 +12,7 @@ public interface Sequenced
     /**
      * Has the buffer got capacity to allocate another sequence.  This is a concurrent
      * method so the response should only be taken as an indication of available capacity.
+     * <p>判断是否含有指定的可用容量</p>
      *
      * @param requiredCapacity in the buffer
      * @return true if the buffer has the capacity to allocate the next sequence otherwise false.

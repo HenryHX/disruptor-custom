@@ -17,6 +17,7 @@ package com.lmax.disruptor;
 
 /**
  * Implementations translate another data representations into events claimed from the {@link RingBuffer}
+ * <p>实现将另一个数据表示转换为从{@link RingBuffer}声明的事件。</p>
  *
  * @param <T> event implementation storing the data for sharing during exchange or parallel coordination of an event.
  * @see EventTranslator
@@ -25,6 +26,7 @@ public interface EventTranslatorOneArg<T, A>
 {
     /**
      * Translate a data representation into fields set in given event
+     * <p>将数据表示转换为给定Event中设置的字段</p>
      *
      * @param event    into which the data should be translated.
      * @param sequence that is assigned to event.

@@ -36,11 +36,16 @@ public final class BatchEventProcessor<T>
 
     private final AtomicInteger running = new AtomicInteger(IDLE);
     private ExceptionHandler<? super T> exceptionHandler = new FatalExceptionHandler();
+    // 数据提供者，默认是RingBuffer，也可替换为自己的数据结构
     private final DataProvider<T> dataProvider;
+    // 默认为ProcessingSequenceBarrier
     private final SequenceBarrier sequenceBarrier;
+    // 此EventProcessor对应的用户自定义的EventHandler实现
     private final EventHandler<? super T> eventHandler;
+    // 当前执行位置
     private final Sequence sequence = new Sequence(Sequencer.INITIAL_CURSOR_VALUE);
     private final TimeoutHandler timeoutHandler;
+    // 每次循环取得一批可用事件后，在实际处理前调用
     private final BatchStartAware batchStartAware;
 
     /**
@@ -48,8 +53,11 @@ public final class BatchEventProcessor<T>
      * the {@link EventHandler#onEvent(Object, long, boolean)} method returns.
      *
      * @param dataProvider    to which events are published.
+     *                        <p>数据存储结构如RingBuffer
      * @param sequenceBarrier on which it is waiting.
+     *                        <p>用于跟踪生产者游标，协调数据处理</p>
      * @param eventHandler    is the delegate to which events are dispatched.
+     *                        <p>用户实现的事件处理器，也就是实际的消费者</p>
      */
     public BatchEventProcessor(
         final DataProvider<T> dataProvider,

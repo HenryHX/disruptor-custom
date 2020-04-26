@@ -19,6 +19,8 @@ import sun.misc.Unsafe;
 
 import com.lmax.disruptor.util.Util;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 
 class LhsPadding
 {
@@ -27,6 +29,10 @@ class LhsPadding
 
 class Value extends LhsPadding
 {
+    /**
+     * value的前后各有7个long变量，用于缓存行填充，前后各7个保证了不管怎样，
+     * 当64位的缓存行加载时value，不会有其他变量共享缓存行，从而解决了伪共享问题
+     */
     protected volatile long value;
 }
 
@@ -42,6 +48,9 @@ class RhsPadding extends Value
  *
  * <p>Also attempts to be more efficient with regards to false
  * sharing by adding padding around the volatile field.
+ *
+ * <p>Sequence可以按照AtomicLong来理解，除了Sequence消除了伪共享问题，更加高效
+ * </p>
  */
 public class Sequence extends RhsPadding
 {
@@ -94,6 +103,9 @@ public class Sequence extends RhsPadding
      * Perform an ordered write of this sequence.  The intent is
      * a Store/Store barrier between this write and any previous
      * store.
+     * <p></p>
+     * 此方法等同于{@link AtomicLong#lazySet(long)}，
+     * 和直接修改volatile(Store/Load)修饰的value相比，非阻塞，更高效，但更新的值会稍迟一点看到
      *
      * @param value The new value for the sequence.
      */
@@ -107,6 +119,10 @@ public class Sequence extends RhsPadding
      * a Store/Store barrier between this write and any previous
      * write and a Store/Load barrier between this write and any
      * subsequent volatile read.
+     * <p></p>
+     * 对该sequence执行volatile写操作。其目的是
+     *      在这次写操作和之前的写操作之间设置Store/Store屏障，
+     *      在这次写操作和后续的volatile读操作之间设置Store/Load屏障。
      *
      * @param value The new value for the sequence.
      */

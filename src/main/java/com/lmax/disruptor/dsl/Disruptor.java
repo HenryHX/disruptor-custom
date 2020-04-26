@@ -328,6 +328,9 @@ public class Disruptor<T>
 
     /**
      * Publish an event to the ring buffer.
+     * <p>使用给定的事件翻译器，发布事件</p>
+     * <p>Disruptor这个类是一个辅助类，在发布事件时其实是委托给
+     * {@link RingBuffer#publishEvent(com.lmax.disruptor.EventTranslatorOneArg, java.lang.Object)}完成发布操作。</p>
      *
      * @param <A> Class of the user supplied argument.
      * @param eventTranslator the translator that will load data into the event.
@@ -534,19 +537,35 @@ public class Disruptor<T>
         return consumerRepository.hasBacklog(cursor, false);
     }
 
+    /**
+     * 由EventHandlerGroup调用时，barrierSequences是EventHandlerGroup实例的序列，也就是上一个事件处理者组的序列，
+     * 作为当前事件处理的门控，防止后边的消费链超前
+     * <p></p>
+     * 如果是第一次调用handleEventsWith，则barrierSequences是一个空数组
+     * <p></p>
+     * Disruptor并非为每个BatchEventProcessor都创建一个新的SequenceBarrier，而是每个消费者组共用一个SequenceBarrier
+     *
+     * @param barrierSequences 当前消费者组的屏障序列数组，如果当前消费者组是第一组，则取一个空的序列数组；
+     *                         否则，barrierSequences就是上一组消费者组的序列数组。
+     * @param eventHandlers 事件消费逻辑的EventHandler数组。
+     * @return
+     */
     EventHandlerGroup<T> createEventProcessors(
         final Sequence[] barrierSequences,
         final EventHandler<? super T>[] eventHandlers)
     {
         checkNotStarted();
 
+        // 对应此事件处理器组的序列组
         final Sequence[] processorSequences = new Sequence[eventHandlers.length];
+        // barrierSequences size=0 时，barrier追踪生产者 cursor
         final SequenceBarrier barrier = ringBuffer.newBarrier(barrierSequences);
 
         for (int i = 0, eventHandlersLength = eventHandlers.length; i < eventHandlersLength; i++)
         {
             final EventHandler<? super T> eventHandler = eventHandlers[i];
 
+            // 批量处理事件的循环
             final BatchEventProcessor<T> batchEventProcessor =
                 new BatchEventProcessor<>(ringBuffer, barrier, eventHandler);
 
@@ -559,20 +578,29 @@ public class Disruptor<T>
             processorSequences[i] = batchEventProcessor.getSequence();
         }
 
+        // 每次添加完事件处理器后，更新门控序列，以便后续调用链的添加。（所谓门控，是指后续消费链的消费，不能超过前边。）
         updateGatingSequencesForNextInChain(barrierSequences, processorSequences);
 
         return new EventHandlerGroup<>(this, consumerRepository, processorSequences);
     }
 
+    /**
+     * 为消费链下一组消费者，更新门控序列
+     * @param barrierSequences 上一组事件处理器组的序列（如果本次是第一次，则为空数组），本组不能超过上组序列值
+     * @param processorSequences 本次要设置的事件处理器组的序列
+     */
     private void updateGatingSequencesForNextInChain(final Sequence[] barrierSequences, final Sequence[] processorSequences)
     {
         if (processorSequences.length > 0)
         {
+            // 将本组序列添加到Sequencer中的gatingSequences中
             ringBuffer.addGatingSequences(processorSequences);
+            // 将上组序列从Sequencer中的gatingSequences中，gatingSequences一直保存消费链末端消费者的序列组
             for (final Sequence barrierSequence : barrierSequences)
             {
                 ringBuffer.removeGatingSequence(barrierSequence);
             }
+            // 取消标记上一组消费者为消费链末端
             consumerRepository.unMarkEventProcessorsAsEndOfChain(barrierSequences);
         }
     }

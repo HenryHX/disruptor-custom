@@ -40,9 +40,9 @@ import com.lmax.disruptor.util.Util;
 public final class MultiProducerSequencer extends AbstractSequencer
 {
     private static final Unsafe UNSAFE = Util.getUnsafe();
-    // 获取数组对象头元素偏移量
+    // 获取int[]数组类的第一个元素与该类起始位置的偏移。
     private static final long BASE = UNSAFE.arrayBaseOffset(int[].class);
-    // 数组一个元素的地址偏移量(用于计算指定下标的元素的内存地址)
+    // 数组每个元素需要占用的地址偏移量，也有可能返回0。BASE和SCALE都是为了操作availableBuffer
     private static final long SCALE = UNSAFE.arrayIndexScale(int[].class);
 
     /**
@@ -151,6 +151,7 @@ public final class MultiProducerSequencer extends AbstractSequencer
 
         do
         {
+            // 当前游标值，初始化时是-1
             current = cursor.get();
             next = current + n;
 
@@ -239,12 +240,21 @@ public final class MultiProducerSequencer extends AbstractSequencer
     }
 
     /**
+     * 对比SingleProducerSequencer的publish，MultiProducerSequencer的publish没有设置cursor，
+     * 而是将内部使用的availableBuffer数组对应位置进行设置。
+     * <p>
+     * availableBuffer是一个记录RingBuffer槽位状态的数组，通过对序列值sequence取ringBuffer大小的模，
+     * 获得槽位号，再通过与ringBuffer大小相除，获取序列值所在的圈数，进行设置。
+     * <p>
+     * 这里没有直接使用模运算和触发运算，而使用更高效的位与和右移操作。
+     *
      * @see Sequencer#publish(long)
      */
     @Override
     public void publish(final long sequence)
     {
         setAvailable(sequence);
+        // 如果使用BlokingWaitStrategy，才会进行通知。否则不会操作
         waitStrategy.signalAllWhenBlocking();
     }
 
@@ -283,6 +293,7 @@ public final class MultiProducerSequencer extends AbstractSequencer
      * write over the top.
      * <p></p>
      * ——首先，我们有一个限制，即游标和最小gating序列之间的增量永远不会大于缓冲区大小(序列中的next/tryNext代码会处理这个问题)。
+     *        （防止生产者太快，覆盖未消费完的数据）
      * ——考虑到 将序列值和indexMask进行与操作，得到插槽的index。(又名模运算符)
      * ——序列的上部成为检查可用性的值。它告诉我们，我们已经绕着环形缓冲区转了多少圈(又名除法)
      * ——因为如果不向前移动gating序列，我们就无法进行包装(例如，最小gating序列实际上是缓冲区中最后可用的位置)，
@@ -295,7 +306,10 @@ public final class MultiProducerSequencer extends AbstractSequencer
 
     private void setAvailableBufferValue(int index, int flag)
     {
+        // 使用Unsafe更新属性，因为是直接操作内存，所以需要计算元素位置对应的内存位置bufferAddress
         long bufferAddress = (index * SCALE) + BASE;
+        // availableBuffer是标志可用位置的int数组，初始全为-1。
+        // 随着sequence不断上升，buffer中固定位置的flag（也就是sequence和bufferSize相除的商）会一直增大。
         UNSAFE.putOrderedInt(availableBuffer, bufferAddress, flag);
     }
 
@@ -326,7 +340,9 @@ public final class MultiProducerSequencer extends AbstractSequencer
     }
 
     /**
-     * 计算sequence对应可用标记，标记其实就是第几环
+     * 求除/
+     *      计算sequence对应可用标记，标记其实就是第几环
+     *      sequence / bufferSize , bufferSize = 2^indexShift。
      * <pre>
      * 如buffersize = 8, indexShift = Util.log2(bufferSize) = 3
      *     sequence = 0(0000)        sequence>>>3 = 0(0)
@@ -352,7 +368,9 @@ public final class MultiProducerSequencer extends AbstractSequencer
     }
 
     /**
-     * 计算sequence对应的下标(插槽位置)
+     * 求模%
+     *      计算sequence对应的下标(插槽位置)
+     *      直接使用序号 与 掩码（2的平方-1，也就是一个全1的二进制表示）,相当于 sequence % (bufferSize), bufferSize = indexMask + 1
      * <pre>
      * 如buffersize = 8, indexMask = bufferSize - 1 = 7(0111);
      *     sequence = 0(0000)        sequence&7 = 0(0)

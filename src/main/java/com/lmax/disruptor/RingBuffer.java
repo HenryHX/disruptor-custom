@@ -21,20 +21,36 @@ import sun.misc.Unsafe;
 import com.lmax.disruptor.dsl.ProducerType;
 import com.lmax.disruptor.util.Util;
 
+/**
+ * 填充辅助类，为解决缓存的伪共享问题，需要对每个缓存行(64B)进行填充
+ */
 abstract class RingBufferPad
 {
+    /**
+     * RingBufferFields中的属性被频繁读取，这里的属性是为了避免RingBufferFields遇到伪共享问题
+     */
     protected long p1, p2, p3, p4, p5, p6, p7;
 }
 
 abstract class RingBufferFields<E> extends RingBufferPad
 {
+    /**
+     * 用于在数组中进行缓存行填充的空元素个数
+     */
     private static final int BUFFER_PAD;
+    /**
+     * 内存中引用数组的开始元素基地址，是数组开始的地址+BUFFER_PAD个元素的偏移量之和，后续元素的内存地址需要在此基础计算地址
+     */
     private static final long REF_ARRAY_BASE;
+    /**
+     * 引用元素的位移量，用于计算BUFFER_PAD偏移量，基于位移计算比乘法运算更高效
+     */
     private static final int REF_ELEMENT_SHIFT;
     private static final Unsafe UNSAFE = Util.getUnsafe();
 
     static
     {
+        // arrayIndexScale获取数组中一个元素占用的字节数，不同JVM实现可能有不同的大小
         final int scale = UNSAFE.arrayIndexScale(Object[].class);
         if (4 == scale)
         {
@@ -48,14 +64,22 @@ abstract class RingBufferFields<E> extends RingBufferPad
         {
             throw new IllegalStateException("Unknown pointer size");
         }
+        // BUFFER_PAD=32 or 16，为什么是128呢？是为了满足处理器的缓存行预取功能(Adjacent Cache-Line Prefetch)
         BUFFER_PAD = 128 / scale;
         // Including the buffer pad in the array base offset
+        // BUFFER_PAD << REF_ELEMENT_SHIFT 实际上是BUFFER_PAD * scale的等价高效计算方式
         REF_ARRAY_BASE = UNSAFE.arrayBaseOffset(Object[].class) + 128;
     }
 
+    /**
+     * 用于进行 & 位与操作，实现高效的模操作
+     */
     private final long indexMask;
     private final Object[] entries;
     protected final int bufferSize;
+    /**
+     * 生产者序列号
+     */
     protected final Sequencer sequencer;
 
     RingBufferFields(
@@ -485,12 +509,16 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
+     * 分为两个步骤：
+     *      <p>1）第一步先占有RingBuffer上的一个可用位置，我们简称为“占坑”；
+     *      <p>2）第二步在可用位置发布数据，我们简称为“填坑”。</p>
      * @see com.lmax.disruptor.EventSink#publishEvent(com.lmax.disruptor.EventTranslatorOneArg, Object)
      * com.lmax.disruptor.EventSink#publishEvent(com.lmax.disruptor.EventTranslatorOneArg, A)
      */
     @Override
     public <A> void publishEvent(EventTranslatorOneArg<E, A> translator, A arg0)
     {
+        // 获取RingBuffer实例下一个能用的序号
         final long sequence = sequencer.next();
         translateAndPublish(translator, sequence, arg0);
     }

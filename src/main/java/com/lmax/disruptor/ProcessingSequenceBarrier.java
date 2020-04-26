@@ -27,6 +27,7 @@ import com.lmax.disruptor.util.Util;
  */
 final class ProcessingSequenceBarrier implements SequenceBarrier
 {
+    // 等待可用消费时，指定的等待策略
     private final WaitStrategy waitStrategy;
     /**
      * 依赖的上组消费者的序号，如果当前为第一组则为cursorSequence（即生产者发布cursor序列），否则使用FixedSequenceGroup封装上组消费者序列
@@ -85,16 +86,21 @@ final class ProcessingSequenceBarrier implements SequenceBarrier
         // 检查是否停止服务
         checkAlert();
 
-        // 获取最大可用序号 sequence为给定序号，一般为当前序号+1，cursorSequence记录生产者最新位置，
+        // 获取最大可用序号 sequence为给定序号，一般为当前序号+1，
+        // cursorSequence记录生产者最新位置，dependentSequence为依赖的Sequence[]
         long availableSequence = waitStrategy.waitFor(sequence, cursorSequence, dependentSequence, this);
 
-        // 目标sequence还未发布，超时了
+        // 产生比预期的sequence小,可能序号被重置回老的的oldSequence值
+        //可参考https://github.com/LMAX-Exchange/disruptor/issues/76
         if (availableSequence < sequence)
         {
             return availableSequence;
         }
 
         // 目标sequence已经发布了，这里获取真正的最大序号(和生产者模型有关)
+        // 获取最大的可用的已经发布的sequence，可能比sequence小
+        //      会在多生产者中出现，当生产者1获取到序号13，生产者2获取到14；
+        //      生产者1没发布，生产者2发布，会导致获取的可用序号为12，而sequence为13
         return sequencer.getHighestPublishedSequence(sequence, availableSequence);
     }
 
