@@ -23,14 +23,18 @@ public interface LifecycleAware
 {
     /**
      * Called once on thread start before first event is available.
+     * <p>在第一个事件可用之前，在线程启动时调用一次。</p>
      */
     void onStart();
 
     /**
      * <p>Called once just before the thread is shutdown.</p>
+     * <p>仅在线程关闭之前调用一次。
      * <p>
      * Sequence event processing will already have stopped before this method is called. No events will
      * be processed after this message.
+     * <p></p>
+     * 在调用此方法之前，序列事件处理已经停止。此消息之后将不处理任何事件。
      */
     void onShutdown();
 }

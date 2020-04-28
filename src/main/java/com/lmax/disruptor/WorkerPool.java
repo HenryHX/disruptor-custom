@@ -97,6 +97,9 @@ public final class WorkerPool<T>
                 workSequence);
         }
 
+        /**
+         * {@link MultiProducerSequencer}会持续跟踪它们的进度信息，想使用一个序号时必须等待所有的 门控序列 处理完该序号。
+         */
         ringBuffer.addGatingSequences(getWorkerSequences());
     }
 
@@ -112,6 +115,7 @@ public final class WorkerPool<T>
         {
             sequences[i] = workProcessors[i].getSequence();
         }
+        // 整个消费者组的进度
         sequences[sequences.length - 1] = workSequence;
 
         return sequences;
@@ -145,6 +149,7 @@ public final class WorkerPool<T>
 
     /**
      * Wait for the {@link RingBuffer} to drain of published events then halt the workers.
+     * <p>等待{@link RingBuffer}耗尽已发布的事件，然后停止工作。</p>
      */
     public void drainAndHalt()
     {

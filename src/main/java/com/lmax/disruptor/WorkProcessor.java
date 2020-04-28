@@ -121,6 +121,7 @@ public final class WorkProcessor<T>
 
         notifyStart();
 
+        // 判断是否完成了上一次的Event的处理
         boolean processedSequence = true;
         long cachedAvailableSequence = Long.MIN_VALUE;
         long nextSequence = sequence.get();
@@ -134,6 +135,10 @@ public final class WorkProcessor<T>
                 // typically, this will be true
                 // this prevents the sequence getting too far forward if an exception
                 // is thrown from the WorkHandler
+
+                // 如果处理了上一个序列——获取下一个序列并设置为我们已经成功处理了上一个序列，
+                // 通常情况下，processedSequence为true，
+                // 如果从WorkHandler抛出一个异常，这将防止序列向前走得太远
 
                 // 表示nextSequence序号的处理情况（不区分正常或是异常处理）。只有处理过，才能申请下一个序号。
                 if (processedSequence)
