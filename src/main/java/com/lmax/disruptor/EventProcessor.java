@@ -50,5 +50,8 @@ public interface EventProcessor extends Runnable
      */
     void halt();
 
+    /**
+     * @return HALTED & RUNNING 返回true；IDLE 返回 false
+     */
     boolean isRunning();
 }

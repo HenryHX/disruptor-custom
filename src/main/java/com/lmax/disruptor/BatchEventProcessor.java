@@ -36,9 +36,13 @@ public final class BatchEventProcessor<T>
 
     private final AtomicInteger running = new AtomicInteger(IDLE);
     private ExceptionHandler<? super T> exceptionHandler = new FatalExceptionHandler();
-    // 数据提供者，默认是RingBuffer，也可替换为自己的数据结构
+    /**
+     * 数据提供者，默认是{@link RingBuffer}，也可替换为自己的数据结构
+     */
     private final DataProvider<T> dataProvider;
-    // 默认为ProcessingSequenceBarrier
+    /**
+     * 默认为{@link ProcessingSequenceBarrier}
+     */
     private final SequenceBarrier sequenceBarrier;
     // 此EventProcessor对应的用户自定义的EventHandler实现
     private final EventHandler<? super T> eventHandler;
@@ -55,7 +59,7 @@ public final class BatchEventProcessor<T>
      * @param dataProvider    to which events are published.
      *                        <p>数据存储结构如RingBuffer
      * @param sequenceBarrier on which it is waiting.
-     *                        <p>用于跟踪生产者游标，协调数据处理</p>
+     *                        <p>用于跟踪生产者游标和前置消费者Sequence，协调数据处理</p>
      * @param eventHandler    is the delegate to which events are dispatched.
      *                        <p>用户实现的事件处理器，也就是实际的消费者</p>
      */
@@ -201,6 +205,15 @@ public final class BatchEventProcessor<T>
             }
             catch (final AlertException ex)
             {
+                /**
+                 * 如果一组消费者共享同一个{@link ProcessingSequenceBarrier}
+                 * 其中一个消费者调用了{@link BatchEventProcessor#halt()}，该组内的所有消费者都会执行以下操作：
+                 *      1、{@link ProcessingSequenceBarrier#alert()}设置alerted = true，唤醒等待在WaitStrategy.waitFor上的线程
+                 *      2、barrier.checkAlert();抛出AlertException异常，消费者处理进入当前的catch处理逻辑
+                 * 因为只有调用halt的那个消费者running会变成halt，所以其他消费者可以继续while(true)循环，会一直进入该catch处理逻辑
+                 *
+                 *
+                 */
                 if (running.get() != RUNNING)
                 {
                     break;
@@ -257,6 +270,7 @@ public final class BatchEventProcessor<T>
 
     /**
      * Notifies the EventHandler immediately prior to this processor shutting down
+     * <p>在处理器关闭之前立即通知EventHandler</p>
      */
     private void notifyShutdown()
     {

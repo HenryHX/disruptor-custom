@@ -44,13 +44,18 @@ abstract class RingBufferFields<E> extends RingBufferPad
     private static final long REF_ARRAY_BASE;
     /**
      * 引用元素的位移量，用于计算BUFFER_PAD偏移量，基于位移计算比乘法运算更高效
+     * 2^n=每个数组对象引用所占空间，这个n就是REF_ELEMENT_SHIFT
      */
     private static final int REF_ELEMENT_SHIFT;
     private static final Unsafe UNSAFE = Util.getUnsafe();
 
     static
     {
-        // arrayIndexScale获取数组中一个元素占用的字节数，不同JVM实现可能有不同的大小
+        /**
+         * UNSAFE.arrayIndexScale 是获取一个数组在内存中的scale，也就是每个数组元素在内存中的大小,
+         * 不同的JVM设置，它的指针大小是不一样的，Object数组引用长度，32位为4字节，64位为8字节
+         * 因为我们的event是任意一个对象，所以在这里用一个Object的数组class来求scale
+         */
         final int scale = UNSAFE.arrayIndexScale(Object[].class);
         if (4 == scale)
         {
@@ -65,8 +70,10 @@ abstract class RingBufferFields<E> extends RingBufferPad
             throw new IllegalStateException("Unknown pointer size");
         }
         // BUFFER_PAD=32 or 16，为什么是128呢？是为了满足处理器的缓存行预取功能(Adjacent Cache-Line Prefetch)
+        // 需要填充128字节，缓存行长度一般是128字节
         BUFFER_PAD = 128 / scale;
         // Including the buffer pad in the array base offset
+        // 获取数组在内存中的偏移量，也就是第一个元素的内存偏移量
         // BUFFER_PAD << REF_ELEMENT_SHIFT 实际上是BUFFER_PAD * scale的等价高效计算方式
         REF_ARRAY_BASE = UNSAFE.arrayBaseOffset(Object[].class) + 128;
     }
@@ -89,16 +96,37 @@ abstract class RingBufferFields<E> extends RingBufferPad
         this.sequencer = sequencer;
         this.bufferSize = sequencer.getBufferSize();
 
+        // 保证buffer大小为2的n次方
         if (bufferSize < 1)
         {
             throw new IllegalArgumentException("bufferSize must not be less than 1");
         }
+        // 保证buffer大小为2的n次方
         if (Integer.bitCount(bufferSize) != 1)
         {
             throw new IllegalArgumentException("bufferSize must be a power of 2");
         }
 
+        // m % 2^n  <=>  m & (2^n - 1)
         this.indexMask = bufferSize - 1;
+
+        /**
+         * 对于entries数组的缓存行填充，申请的数组大小为实际需要大小加上2 * BUFFER_PAD，所占空间就是2*128字节。
+         * 由于数组中的元素经常访问，所以将数组中的实际元素两边各加上128字节的padding防止false sharing。
+         * 所以，初始化RingBuffer内所有对象时，从下标BUFFER_PAD开始，到BUFFER_PAD+bufferSize-1为止。
+         * <p></p>
+         *
+         * 结构：缓存行填充，避免频繁访问的任一entry与另一被修改的无关变量写入同一缓存行
+         * --------------
+         * *   数组头   * BASE
+         * *   Padding  * 128字节
+         * * reference1 * SCALE
+         * * reference2 * SCALE
+         * * reference3 * SCALE
+         * ..........
+         * *   Padding  * 128字节
+         * --------------
+         */
         this.entries = new Object[sequencer.getBufferSize() + 2 * BUFFER_PAD];
         fill(eventFactory);
     }
@@ -111,6 +139,30 @@ abstract class RingBufferFields<E> extends RingBufferPad
         }
     }
 
+    /**
+     * 如果 scale = 4 字节
+     *      REF_ELEMENT_SHIFT = 2
+     *      BUFFER_PAD = 128 / scale = 32 个元素PAD
+     *      REF_ARRAY_BASE = UNSAFE.arrayBaseOffset(Object[].class + BUFFER_PAD << REF_ELEMENT_SHIFT
+     *                     = UNSAFE.arrayBaseOffset(Object[].class + 128 字节
+     *      entries = new Object[sequencer.getBufferSize() + 2 * BUFFER_PAD]
+     *              = new Object[sequencer.getBufferSize() + 2 * 32] 在数组前后预留32*4=128个字节
+     *      每个元素的地址BUFFER_PAD + i = 32 + i
+     *
+     * 如果 scale = 8 字节
+     *      REF_ELEMENT_SHIFT = 3
+     *      BUFFER_PAD = 128 / scale = 16 个元素PAD
+     *      REF_ARRAY_BASE = UNSAFE.arrayBaseOffset(Object[].class + BUFFER_PAD << REF_ELEMENT_SHIFT
+     *                     = UNSAFE.arrayBaseOffset(Object[].class + 128 字节
+     *      entries = new Object[sequencer.getBufferSize() + 2 * BUFFER_PAD]
+     *              = new Object[sequencer.getBufferSize() + 2 * 16] 在数组前后预留16*8=128个字节
+     *      每个元素的地址BUFFER_PAD + i = 16 + i
+     *
+     *  取出某一sequence的对象，也是BUFFER_PAD开始算0,地址是以REF_ARRAY_BASE 为基址（数组基址+数组头128字节+引用偏移），
+     *  每个引用占用2^REF_ELEMENT_SHIFT个字节，sequence 对bufferSize取模乘以2^REF_ELEMENT_SHIFT。
+     * @param sequence
+     * @return
+     */
     @SuppressWarnings("unchecked")
     protected final E elementAt(long sequence)
     {

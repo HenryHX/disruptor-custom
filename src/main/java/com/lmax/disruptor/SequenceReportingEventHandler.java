@@ -23,6 +23,23 @@ package com.lmax.disruptor;
  * device; after the operation has completed, the implementation should call {@link Sequence#set} to update the
  * sequence and allow other processes that are dependent on this handler to progress.
  *
+ * <p></p>
+ * {@link BatchEventProcessor}用于设置回调，允许{@link EventHandler}在{@link EventHandler#onEvent(Object, long, boolean)}调用后通知它已经完成了一个事件的使用。
+ * <p>通常在处理程序执行某种批处理操作时使用，例如写入IO设备;一个批次消息中的每一个Event操作完成后，实现应该调用{@link Sequence#set}来更新序列，
+ * 并允许依赖于此处理程序的其他进程继续前进。
+ *
+ * <pre>
+ *
+ * Notify the BatchEventProcessor that the sequence has progressed. Without this callback the sequence would not
+ * be progressed until the batch has completely finished.
+ *
+ * private void notifyIntermediateProgress(final long sequence){
+ *      if(++counter>NOTIFY_PROGRESS_THRESHOLD){
+ *          sequenceCallback.set(sequence);
+ *          counter=0;
+ *      }
+ * }
+ * </pre>
  * @param <T> event implementation storing the data for sharing during exchange or parallel coordination of an event.
  */
 public interface SequenceReportingEventHandler<T>
