@@ -21,15 +21,24 @@ import java.util.*;
 
 /**
  * Provides a repository mechanism to associate {@link EventHandler}s with {@link EventProcessor}s
+ * <p></p>
+ *
+ * 消费者信息仓库，将EventHandler 与 EventProcessor关联起来。
+ * 传递给Disruptor的每一个EventHandler最终都会关联到一个EventProcessor。
  *
  * @param <T> the type of the {@link EventHandler}
  */
 class ConsumerRepository<T> implements Iterable<ConsumerInfo>
 {
-    private final Map<EventHandler<?>, EventProcessorInfo<T>> eventProcessorInfoByEventHandler =
-        new IdentityHashMap<>();
-    private final Map<Sequence, ConsumerInfo> eventProcessorInfoBySequence =
-        new IdentityHashMap<>();
+    // EventHandler到批量事件处理消费者信息的映射，用于信息查询
+    private final Map<EventHandler<?>, EventProcessorInfo<T>> eventProcessorInfoByEventHandler = new IdentityHashMap<>();
+
+    /**
+     * Sequence到消费者信息的映射
+     * 一个消费者可能有多个Sequence{@link WorkerPool},但是一个Sequence只从属一个消费者。
+     */
+    private final Map<Sequence, ConsumerInfo> eventProcessorInfoBySequence = new IdentityHashMap<>();
+
     private final Collection<ConsumerInfo> consumerInfos = new ArrayList<>();
 
     public void add(
@@ -60,10 +69,17 @@ class ConsumerRepository<T> implements Iterable<ConsumerInfo>
         }
     }
 
+    /**
+     * 判断是否有积压
+     * @param cursor
+     * @param includeStopped 是否包括已经停止运行的消费者
+     * @return 生产者进度大于消费者进度，返回true
+     */
     public boolean hasBacklog(long cursor, boolean includeStopped)
     {
         for (ConsumerInfo consumerInfo : consumerInfos)
         {
+            // 只查看消费者链末端的消费者进度
             if ((includeStopped || consumerInfo.isRunning()) && consumerInfo.isEndOfChain())
             {
                 final Sequence[] sequences = consumerInfo.getSequences();
@@ -100,6 +116,12 @@ class ConsumerRepository<T> implements Iterable<ConsumerInfo>
         return lastSequence.toArray(new Sequence[lastSequence.size()]);
     }
 
+    /**
+     * 获取EventHandler绑定的EventProcessor
+     * （每一个EventHandler都会被包装为一个EventProcessor,每一个EventProcessor有自己独立的Sequence）
+     * @param handler
+     * @return
+     */
     public EventProcessor getEventProcessorFor(final EventHandler<T> handler)
     {
         final EventProcessorInfo<T> eventprocessorInfo = getEventProcessorInfo(handler);
@@ -116,6 +138,10 @@ class ConsumerRepository<T> implements Iterable<ConsumerInfo>
         return getEventProcessorFor(handler).getSequence();
     }
 
+    /**
+     * 将这些Sequence标记为不在消费者链的末端了
+     * @param barrierEventProcessors
+     */
     public void unMarkEventProcessorsAsEndOfChain(final Sequence... barrierEventProcessors)
     {
         for (Sequence barrierEventProcessor : barrierEventProcessors)
@@ -130,6 +156,11 @@ class ConsumerRepository<T> implements Iterable<ConsumerInfo>
         return consumerInfos.iterator();
     }
 
+    /**
+     * 获取EventHandler绑定的SequenceBarrier
+     * （每一个EventHandler都会被包装为一个EventProcessor,每一个EventProcessor从属于一个消费者，
+     *  一个消费者有且仅有一个SequenceBarrier)
+     */
     public SequenceBarrier getBarrierFor(final EventHandler<T> handler)
     {
         final ConsumerInfo consumerInfo = getEventProcessorInfo(handler);

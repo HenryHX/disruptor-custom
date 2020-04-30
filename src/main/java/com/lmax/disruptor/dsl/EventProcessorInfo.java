@@ -26,7 +26,9 @@ import java.util.concurrent.Executor;
  * <p>Wrapper class to tie together a particular event processing stage</p>
  * <p>
  * <p>Tracks the event processor instance, the event handler instance, and sequence barrier which the stage is attached to.</p>
- *
+ * <p>
+ * 单事件处理器消费者信息。
+ * (单线程事件处理器的消费者,单个EventProcessor处理所有的事件)
  * @param <T> the type of the configured {@link EventHandler}
  */
 class EventProcessorInfo<T> implements ConsumerInfo
@@ -34,6 +36,9 @@ class EventProcessorInfo<T> implements ConsumerInfo
     private final EventProcessor eventprocessor;
     private final EventHandler<? super T> handler;
     private final SequenceBarrier barrier;
+    /**
+     * 是否是消费链的末端消费者(没有后继消费者)
+     */
     private boolean endOfChain = true;
 
     EventProcessorInfo(

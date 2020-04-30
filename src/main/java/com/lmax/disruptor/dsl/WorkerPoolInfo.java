@@ -4,6 +4,10 @@ import com.lmax.disruptor.*;
 
 import java.util.concurrent.Executor;
 
+/**
+ * 线程池消费者信息对象/工作者池信息。
+ * （WorkPool整体是一个消费者，是一个多线程的消费者）
+ */
 class WorkerPoolInfo<T> implements ConsumerInfo
 {
     private final WorkerPool<T> workerPool;

@@ -26,12 +26,42 @@ import java.util.Arrays;
 /**
  * A group of {@link EventProcessor}s used as part of the {@link Disruptor}.
  *
+ * <p></p>
+ *
+ * 一个事件处理器组，作为Disruptor构成中的一部分。
+ * <b>这个类很重要</b>
+ *
+ * 用于组织消费者之间的依赖关系。
+ * 建立消费者之间的依赖其实也就是建立消费者与前驱节点的Sequence之间的依赖
+ * 它会建立依赖消费者之间的依赖，也就是Barrier中的dependentSequence的由来。
+ * {@link com.lmax.disruptor.ProcessingSequenceBarrier#dependentSequence}
+ *
  * @param <T> the type of entry used by the event processors.
  */
 public class EventHandlerGroup<T>
 {
+    /**
+     * 方便回调，用于创建具有依赖关系的消费者
+     * {@link Disruptor#createEventProcessors(Sequence[], EventHandler[])}
+     * {@link Disruptor#createEventProcessors(Sequence[], EventProcessorFactory[])}
+     *
+     */
     private final Disruptor<T> disruptor;
+
+    /**
+     * 所有消费者的信息，方便增加和查询
+     * (包含所有EventHandler的信息)
+     */
     private final ConsumerRepository<T> consumerRepository;
+
+    /**
+     * 当前EventHandlerGroup拥有的所有Sequence。
+     * 也隐含的表示了EventHandlerGroup所代表的所有消费者。
+     * 也就是EventHandlerGroup的所有EventHandler的后继消费者的依赖Sequences
+     *
+     * 其它代码里面的 dependentSequence / barrierSequences / sequencesToTrack 其实就是它啦。
+     * 用于保证消费者之间的可见性{@link ConsumerInfo#getSequences()}
+     */
     private final Sequence[] sequences;
 
     EventHandlerGroup(
@@ -46,6 +76,11 @@ public class EventHandlerGroup<T>
 
     /**
      * Create a new event handler group that combines the consumers in this group with <code>otherHandlerGroup</code>.
+     *
+     * <p></p>
+     * disruptor.after(handler1).and(handler2).handleEventsWith(handler3);
+     * <p>
+     * 3在1和2之后才能执行，所以3需要监控1和2的全部sequences
      *
      * @param otherHandlerGroup the event handler group to combine.
      * @return a new EventHandlerGroup combining the existing and new consumers into a single dependency group.
@@ -88,6 +123,14 @@ public class EventHandlerGroup<T>
      * process events before handler <code>B</code>:</p>
      *
      * <pre><code>dw.handleEventsWith(A).then(B);</code></pre>
+     *
+     * <p></p>
+     *
+     * 添加一批EventHandler从RingBuffer中消费事件。
+     *
+     * 这些新增的EventHandler只能消费已经被当前EventHandlerGroup代表的所有消费者已经消费的事件。
+     *
+     * 这个方法对于构建链式消费来说很有用，会确立明确的先后顺序。
      *
      * @param handlers the batch handlers that will process events.
      * @return a {@link EventHandlerGroup} that can be used to set up a event processor barrier over the created event processors.

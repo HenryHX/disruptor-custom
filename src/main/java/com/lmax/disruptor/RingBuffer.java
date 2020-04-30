@@ -397,6 +397,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * Resets the cursor to a specific value.  This can be applied at any time, but it is worth noting
      * that it can cause a data race and should only be used in controlled circumstances.  E.g. during
      * initialisation.
+     * <p>将cursor重置为特定值。这可以在任何时候应用，但是值得注意的是，它会导致数据竞争，并且应该只在受控的环境中使用。如初始化。</p>
      *
      * @param sequence The sequence to reset too.
      * @throws IllegalStateException If any gating sequences have already been specified.
@@ -425,6 +426,9 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * Determines if a particular entry is available.  Note that using this when not within a context that is
      * maintaining a sequence barrier, it is likely that using this to determine if you can read a value is likely
      * to result in a race condition and broken code.
+     * <p>
+     * 确定某个特定entry是否可用。
+     * </p>
      *
      * @param sequence The sequence to identify the entry.
      * @return If the value can be read or not.

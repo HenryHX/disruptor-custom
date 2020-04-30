@@ -39,6 +39,22 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
+ * 1.领域特定语言 domain-specific language (DSL)。
+ *   实现了建造者模式(为RingBuffer的建造者)。
+ *
+ * 2.{@link #handleEventsWith(EventHandler[])}
+ *   {@link #handleEventsWith(EventProcessor...)}
+ *   {@link #handleEventsWith(EventProcessorFactory[])}
+ *   所有的 {@code handleEventsWith} 都是添加消费者，每一个{@link EventHandler}、
+ *   {@link EventProcessor}、{@link EventProcessorFactory}都会被包装为一个独立的消费者{@link BatchEventProcessor}
+ *   数组长度就代表了添加的消费者个数。
+ *
+ * 3.{@link #handleEventsWithWorkerPool(WorkHandler[])} 方法为添加一个多线程的消费者，这些handler共同构成一个消费者.
+ *   （WorkHandler[]会被包装为 {@link WorkerPool}，一个WorkPool是一个消费者，WorkPool中的Handler们
+ *   协作共同完成消费。一个事件只会被WokerPool中的某一个WorkHandler消费。
+ *   数组的长度决定了线程池内的线程数量。
+ *
+ *
  * <p>A DSL-style API for setting up the disruptor pattern around a ring buffer
  * (aka the Builder pattern).</p>
  *
@@ -62,9 +78,18 @@ public class Disruptor<T>
     private final Executor executor;
     private final ConsumerRepository<T> consumerRepository = new ConsumerRepository<>();
     private final AtomicBoolean started = new AtomicBoolean(false);
+    /**
+     * EventHandler的异常处理器。
+     * 警告！！！默认的异常处理器在EventHandler抛出异常时会终止EventProcessor的线程(退出任务)。
+     */
     private ExceptionHandler<? super T> exceptionHandler = new ExceptionHandlerWrapper<>();
 
     /**
+     * 创建一个Disruptor，默认使用阻塞等待策略。
+     *
+     * 为什么被标记为不推荐呢？ 因为disruptor需要为每一个EventHandler(EventProcessor)创建一个线程，
+     * 采用有界线程池容易导致无法创建足够多的线程而导致死锁。
+     * <p></p>
      * Create a new Disruptor. Will default to {@link com.lmax.disruptor.BlockingWaitStrategy} and
      * {@link ProducerType}.MULTI
      *
@@ -168,6 +193,12 @@ public class Disruptor<T>
     }
 
     /**
+     * 添加并行消费者，每一个EventProcessorFactory创建一个EventProcessor映射为一个消费者。
+     *
+     * 这些消费者之间是并行关系，构成一个消费者组
+     *
+     * <p></p>
+     *
      * <p>Set up custom event processors to handle events from the ring buffer. The Disruptor will
      * automatically start these processors when {@link #start()} is called.</p>
      *
@@ -199,6 +230,9 @@ public class Disruptor<T>
      * <p>This method can be used as the start of a chain. For example if the processor <code>A</code> must
      * process events before handler <code>B</code>:</p>
      * <pre><code>dw.handleEventsWith(A).then(B);</code></pre>
+     * <p></p>
+     * 这只在第一次添加EventProcessor消费者组的时候才调用，所以不需要执行
+     * {@link Disruptor#updateGatingSequencesForNextInChain(com.lmax.disruptor.Sequence[], com.lmax.disruptor.Sequence[])}
      *
      * @param processors the event processors that will process events.
      * @return a {@link EventHandlerGroup} that can be used to chain dependencies.
@@ -254,13 +288,17 @@ public class Disruptor<T>
      * <p>Specify an exception handler to be used for event handlers and worker pools created by this Disruptor.</p>
      *
      * <p>The exception handler will be used by existing and future event handlers and worker pools created by this Disruptor instance.</p>
-     *
+     * <p></p>
+     * 设置默认的异常处理器
      * @param exceptionHandler the exception handler to use.
      */
     @SuppressWarnings("unchecked")
     public void setDefaultExceptionHandler(final ExceptionHandler<? super T> exceptionHandler)
     {
         checkNotStarted();
+        /**
+         * 如果{@link Disruptor#handleExceptionsWith(com.lmax.disruptor.ExceptionHandler)}已修改过异常处理器，不允许在修改
+         */
         if (!(this.exceptionHandler instanceof ExceptionHandlerWrapper))
         {
             throw new IllegalStateException("setDefaultExceptionHandler can not be used after handleExceptionsWith");
@@ -271,6 +309,7 @@ public class Disruptor<T>
     /**
      * Override the default exception handler for a specific handler.
      * <pre>disruptorWizard.handleExceptionsIn(eventHandler).with(exceptionHandler);</pre>
+     * <p>为handler添加异常处理设置功能</p>
      *
      * @param eventHandler the event handler to set a different exception handler for.
      * @return an ExceptionHandlerSetting dsl object - intended to be used by chaining the with method call.
@@ -391,6 +430,12 @@ public class Disruptor<T>
      *
      * <p>This method must only be called once after all event processors have been added.</p>
      *
+     * <p></p>
+     *
+     * 启动Disruptor，其实就是为每一个EventProcessor创建一个独立的线程。
+     *
+     * 消费者关系的组织必须在启动之前。
+     *
      * @return the configured ring buffer.
      */
     public RingBuffer<T> start()
@@ -422,6 +467,12 @@ public class Disruptor<T>
      *
      * <p>This method will not shutdown the executor, nor will it await the final termination of the
      * processor threads.</p>
+     *
+     * <p></p>
+     * 关闭Disruptor 直到所有的事件处理器停止。(必须保证已经停止向ringBuffer发布数据)
+     *
+     * 本方法不会关闭executor，也不会等待所有的eventProcessor的线程进入终止状态。
+     * 事件处理完，线程不一定退出了，（比如线程可能存在二阶段终止模式）
      */
     public void shutdown()
     {
@@ -585,7 +636,8 @@ public class Disruptor<T>
     }
 
     /**
-     * 为消费链下一组消费者，更新门控序列
+     * 更新门控序列(生产者只需要关注所有的末端消费者节点的序列)
+     *
      * @param barrierSequences 上一组事件处理器组的序列（如果本次是第一次，则为空数组），本组不能超过上组序列值
      * @param processorSequences 本次要设置的事件处理器组的序列
      */
