@@ -42,12 +42,24 @@ public class DelayedEventHandler implements EventHandler<TestEvent>, LifecycleAw
     @Override
     public void onEvent(final TestEvent entry, final long sequence, final boolean endOfBatch) throws Exception
     {
+        System.out.println(Thread.currentThread().getName() + " before onEvent: readyToProcessEvent = " + readyToProcessEvent);
         waitForAndSetFlag(false);
+        System.out.println(Thread.currentThread().getName() + " after onEvent: readyToProcessEvent = " + readyToProcessEvent);
     }
 
+    /**
+     * 如果不调用该方法，onEvent会阻塞在while循环， 因为readyToProcessEvent初始值是false，compareAndSet(true, false)返回false
+     * <p>==> <p>onEvent 等待 readyToProcessEvent=true
+     *     <p>processEvent 设置readyToProcessEvent=true
+     *     <p>onEvent继续执行 设置readyToProcessEvent=false
+     *
+     *     <p>以上为一个循环，同一个线程，下一次执行onEvent方法时，依然要等待 readyToProcessEvent=true，即需要执行processEvent方法
+     */
     public void processEvent()
     {
+        System.out.println(Thread.currentThread().getName() + " before processEvent: readyToProcessEvent = " + readyToProcessEvent);
         waitForAndSetFlag(true);
+        System.out.println(Thread.currentThread().getName() + " after processEvent: readyToProcessEvent = " + readyToProcessEvent);
     }
 
     public void stopWaiting()

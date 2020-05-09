@@ -27,6 +27,14 @@ import java.util.concurrent.locks.LockSupport;
  * Latency spikes can occur after quiet periods.  It will also reduce the impact
  * on the producing thread as it will not need signal any conditional variables
  * to wake up the event handling thread.
+ *
+ * <p></p>
+ * 当{@link com.lmax.disruptor.EventProcessor}s正在等待一个屏障时：
+ * 休眠策略，开始是自旋的，然后使用Thread.yield()，最后休眠(<code>LockSupport.parkNanos(n)</code>)，
+ * 以获得操作系统和JVM允许的最小数量的nanos。
+ *
+ * <p>此策略是性能和CPU资源之间的一个很好的折衷。潜伏期峰值可以在安静期之后出现。
+ * 它还将减少对产生者线程的影响，因为它不需要发出任何条件变量的信号来唤醒事件处理线程。
  */
 public final class SleepingWaitStrategy implements WaitStrategy
 {
@@ -73,6 +81,21 @@ public final class SleepingWaitStrategy implements WaitStrategy
     {
     }
 
+    /**
+     * waitFor方法的处理逻辑如下：
+     *
+     * 如果没有可用的序列号，则：
+     *
+     * 首先，自旋重试100次（此值可设置，默认200次），如果在重试过程中，存在可用的序列号，则直接返回可用的序列号。
+     *
+     * 否则，如果重试指定次数以后，还是没有可用序列号，则继续自旋重试，但这时每重试一次，便调用Thread.yield方法，
+     *      放弃CPU的使用权，让其它线程可以使用CPU。当该线程再次获取CPU使用权时，继续重试，如果还没有可用的序列号，
+     *      则继续放弃CPU使用权等待。此循环最多100次。
+     *
+     * 最后，如果还没有可用的序列号，则调用LockSupport.parkNanos方法阻塞线程，直到存在可用的序列号。
+     *      当LockSupport.parkNanos方法由于超时返回后，如果还没有可用的序列号，则该线程获取CPU使用权以后，
+     *      可能继续调用LockSupport.parkNanos方法阻塞线程。
+     */
     private int applyWaitMethod(final SequenceBarrier barrier, int counter)
         throws AlertException
     {

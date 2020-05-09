@@ -13,12 +13,15 @@ public class TestWorkHandler implements WorkHandler<TestEvent>
     @Override
     public void onEvent(final TestEvent event) throws Exception
     {
+        System.out.println(Thread.currentThread().getName() + " before work onEvent: readyToProcessEvent = " + readyToProcessEvent);
         waitForAndSetFlag(false);
-    }
+        System.out.println(Thread.currentThread().getName() + " after work onEvent: readyToProcessEvent = " + readyToProcessEvent);    }
 
     public void processEvent()
     {
+        System.out.println(Thread.currentThread().getName() + " before work processEvent: readyToProcessEvent = " + readyToProcessEvent);
         waitForAndSetFlag(true);
+        System.out.println(Thread.currentThread().getName() + " after work processEvent: readyToProcessEvent = " + readyToProcessEvent);
     }
 
     public void stopWaiting()

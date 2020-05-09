@@ -94,6 +94,10 @@ public class DisruptorTest
         executor.joinAllThreads();
     }
 
+    /**
+     * 应该处理在调用Start之前发布的消息
+     * @throws Exception
+     */
     @Test
     public void shouldProcessMessagesPublishedBeforeStartIsCalled() throws Exception
     {
@@ -265,9 +269,14 @@ public class DisruptorTest
 
         disruptor.handleEventsWith(createDelayedEventHandler(), eventHandler);
 
+        // 确保根据依赖项处理两个事件
         ensureTwoEventsProcessedAccordingToDependencies(countDownLatch);
     }
 
+    /**
+     * 前置EventProcessors处理完成后，当前消费者才能处理
+     * @throws Exception
+     */
     @Test
     public void shouldWaitUntilAllFirstEventProcessorsProcessEventBeforeMakingItAvailableToDependentEventProcessors()
         throws Exception
@@ -307,6 +316,9 @@ public class DisruptorTest
         assertThat(executor.getExecutionCount(), equalTo(2));
     }
 
+    /**
+     * 应该允许指定特定的EventProcessors等待
+     */
     @Test
     public void shouldAllowSpecifyingSpecificEventProcessorsToWaitFor()
         throws Exception
@@ -351,6 +363,10 @@ public class DisruptorTest
         disruptor.after(createDelayedEventHandler()).handleEventsWith(createDelayedEventHandler());
     }
 
+    /**
+     * 通过同一性而不是平等性
+     * @throws Exception
+     */
     @Test(expected = IllegalArgumentException.class)
     public void shouldTrackEventHandlersByIdentityNotEquality()
         throws Exception
@@ -383,6 +399,10 @@ public class DisruptorTest
         assertSame(testException, actualException);
     }
 
+    /**
+     * HandleExceptionsWith设置的异常处理器只适用于后添加的EventProcessors
+     * @throws Exception
+     */
     @SuppressWarnings("deprecation")
     @Test
     public void shouldOnlyApplyExceptionsHandlersSpecifiedViaHandleExceptionsWithOnNewEventProcessors()
@@ -421,6 +441,11 @@ public class DisruptorTest
         assertSame(testException, actualException);
     }
 
+    /**
+     * setDefaultExceptionHandler设置的异常处理器适用于所有未设置的EventProcessors，
+     * 主要是update wrapper里的{@link ExceptionHandlerWrapper#switchTo(com.lmax.disruptor.ExceptionHandler)}
+     * @throws Exception
+     */
     @Test
     public void shouldApplyDefaultExceptionHandlerToExistingEventProcessors()
         throws Exception
@@ -650,6 +675,10 @@ public class DisruptorTest
         delayedEventHandler.processEvent();
     }
 
+    /**
+     * work pool 最低的消费者完成后的序号可供后置EventHandler处理
+     * @throws Exception
+     */
     @Test
     public void shouldSupportUsingWorkerPoolAsDependencyAndProcessFirstEventAsSoonAsItIsAvailable() throws Exception
     {
@@ -735,6 +764,7 @@ public class DisruptorTest
             @Override
             public void onEvent(final TestEvent event, final long sequence, final boolean endOfBatch) throws Exception
             {
+                // onEvent处理完成后还没有更新消费者的进度
                 remainingCapacity[0] = disruptor.getRingBuffer().remainingCapacity();
             }
         };
@@ -749,6 +779,7 @@ public class DisruptorTest
         {
             Thread.sleep(100);
         }
+
         assertThat(remainingCapacity[0], is(ringBuffer.getBufferSize() - 1L));
         assertThat(disruptor.getRingBuffer().remainingCapacity(), is(ringBuffer.getBufferSize() - 0L));
     }
@@ -886,6 +917,12 @@ public class DisruptorTest
             ProducerType.SINGLE, new BlockingWaitStrategy());
     }
 
+    /**
+     * 第一次启动ringBuffer时候，需要eventHandler.awaitStart()，使得{@link DelayedEventHandler#onStart()}继续执行下去
+     * @return
+     * @throws InterruptedException
+     * @throws BrokenBarrierException
+     */
     private TestEvent publishEvent() throws InterruptedException, BrokenBarrierException
     {
         if (ringBuffer == null)

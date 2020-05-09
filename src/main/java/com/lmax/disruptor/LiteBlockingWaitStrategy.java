@@ -24,6 +24,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * the lock is uncontended.  Shows performance improvements on microbenchmarks.  However this
  * wait strategy should be considered experimental as I have not full proved the correctness of
  * the lock elision code.
+ * <p></p>
+ * {@link BlockingWaitStrategy}的变体，它试图在锁未争用时省略条件唤醒。
+ * 在microbenchmarks上显示性能改进。然而，这种等待策略应该被认为是实验性的，因为我还没有完全证明锁省略代码的正确性。
  */
 public final class LiteBlockingWaitStrategy implements WaitStrategy
 {

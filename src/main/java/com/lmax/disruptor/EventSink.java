@@ -1,5 +1,9 @@
 package com.lmax.disruptor;
 
+/**
+ * 事件接收器
+ * @param <E>
+ */
 public interface EventSink<E>
 {
     /**

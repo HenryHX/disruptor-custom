@@ -19,9 +19,11 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * <p>Phased wait strategy for waiting {@link EventProcessor}s on a barrier.</p>
+ * <p>分阶段等待策略，用于在一个屏障上等待{@link EventProcessor}。</p>
  *
  * <p>This strategy can be used when throughput and low-latency are not as important as CPU resource.
  * Spins, then yields, then waits using the configured fallback WaitStrategy.</p>
+ * <p>当吞吐量和低延迟不像CPU资源那么重要时，可以使用这个策略。自旋，然后yields，然后使用配置的fallback WaitStrategy等待。</p>
  */
 public final class PhasedBackoffWaitStrategy implements WaitStrategy
 {

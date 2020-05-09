@@ -104,6 +104,10 @@ final class ProcessingSequenceBarrier implements SequenceBarrier
         return sequencer.getHighestPublishedSequence(sequence, availableSequence);
     }
 
+    /**
+     * 这里实际返回的是依赖的生产者/消费者的进度 - 因为当依赖其它消费者时，查询生产者进度对于等待是没有意义的
+     * @return
+     */
     @Override
     public long getCursor()
     {

@@ -36,6 +36,11 @@ public final class BusySpinWaitStrategy implements WaitStrategy
         while ((availableSequence = dependentSequence.get()) < sequence)
         {
             barrier.checkAlert();
+            /**
+             * 在ThreadHints.onSpinWait方法中，如果JDK的版本支持java.lang.Thread.onSpinWait()方法，则调用。否则，直接返回。
+             *
+             * 该策略与YieldingWaitStrategy策略相比，很可能出现当没有可用序列号时，长期占用CPU，不释放CPU使用权，导致其它线程无法获取CPU使用权。
+             */
             ThreadHints.onSpinWait();
         }
 
